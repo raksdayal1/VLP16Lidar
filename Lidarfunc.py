@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import math
+import numpy as np
 
 def chunks(l, n):
     """Yield successive n-sized chunks from l."""
@@ -60,12 +61,11 @@ def read_timestamp_bytes(data_bytes):
 def queue_get_all(q, maxItemsToRetreive):
     items = []    
     for numOfItemsRetrieved in range(0, maxItemsToRetreive):
-        try:
-            if numOfItemsRetrieved == maxItemsToRetreive:
-                break
-            items.append(q.get_nowait())
-        except Empty, e:
+        if q.empty():
             break
+        if numOfItemsRetrieved == maxItemsToRetreive:
+            break
+        items.append(q.get_nowait())
     return items
 
 def convert2cart(r,a,w):
@@ -100,4 +100,9 @@ def list_mean_circinterp(input_list):
         
     return desired_list
         
-        
+def get_uniques(a):
+    b = np.ascontiguousarray(a).view(np.dtype((np.void, a.dtype.itemsize * a.shape[1])))
+    _, idx = np.unique(b, return_index=True)
+
+    unique_a = a[idx]
+    return unique_a
