@@ -3,83 +3,87 @@
 import socket
 from threading import Thread
 from Queue import Queue
-from numpy import interp, zeros, savetxt, array, shape
+from numpy import interp, zeros, savetxt, array, shape,empty
+from numpy import append, concatenate
 from itertools import chain
 import time
 
 from Lidarfunc import *
 N_DATA_BLOCKS = 12
-#global Data
-#Data=[[],[],[],[]] #(x,y,z,intensity)
 
-def pull_data(ip, port, q_data):
-    sock_data = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock_data.bind((ip, port))
-    sock_data.settimeout(10) # 10 second timeout, change to input later
 
-    while True:
+class LIDAR:
+    def __init__(self,ip,port):
+        self.sock_data = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock_data.bind((ip, port))
+        self.sock_data.settimeout(10) # 10 second timeout, change to input later
+
+        self.dataq = Queue(maxsize=0)
+        self.fstore = []
+        self.init_frame()
+
+    def init_frame(self):
+        self.frame = empty(shape=(0,7), dtype=float)
+        
+        
+    def pull_data(self):
         try:
-            t = time.time()
-            data_packet, addr = sock_data.recvfrom(1248)
+            data_packet, addr = self.sock_data.recvfrom(1248)
             hex_data_packet = map(hex,map(ord,data_packet))
-            data_packet_parse(hex_data_packet,q_data)
-            elapsed = time.time() -t
-            #print 'sock create ',elapsed
+            data_partial = self.data_packet_parse(hex_data_packet)
+            self.dataq.put_nowait(data_partial)
         except socket.timeout:
             print("Closing data socket")
-            sock_data.close()
-            break
+            self.sock_data.close()
             
-
-def pull_pos(ip, port, q_pos):
-    sock_pos = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock_pos.bind((ip, port))
-
-    sock_data.settimeout(2) # 2 second timeout, change to input later
-
-    while True:
-        try:
-            pos_packet, addr = sock_pos.recvfrom(554)
-            hex_pos_packet = map(hex,map(ord, pos_packet))
-            q_pos.put_nowait(hex_data_packet)
-        except socket.timeout:
-            print("Closing GPS socket")
-            sock_pos.close()
-
-
-def data_packet_parse(hex_data_packet,q_data):
-    t = time.time()
-    hex_time_packet = hex_data_packet[1200:1204]
-    
-    time_sec = read_timestamp_bytes(hex_time_packet)
-    
-    #get the factory data bytes
-    hex_factory_packet = hex_data_packet[1204:]
-
-    #get hex_data_block
-    hex_data_blocks = hex_data_packet[:1200]
-    Datablock = {}
-    
-    for i in xrange(1,N_DATA_BLOCKS+1):
-        Datablock[i] = {}
+                
+    def data_packet_parse(self,hex_data_packet):
         
-        #get the azimuth bytes from each data block
-        azimuth_bytes = hex_data_blocks[100*(i-1):100*i][2:4]
+        hex_time_packet = hex_data_packet[1200:1204]
         
-        # split the entire data block into chunks representing channels
-        channel_bytes = list(chunks(hex_data_blocks[100*(i-1):100*i][4:],3)) 
-
-        Datablock[i]['azimuthbytes'] = azimuth_bytes
-        Datablock[i]['channelbytes'] = channel_bytes
+        time_sec = read_timestamp_bytes(hex_time_packet)
         
-    data_packet_sensor_info = create_packet_table(Datablock)
-    q_data.put(data_packet_sensor_info)
-    elapsed = time.time() -t
-    print 'packet parse ',elapsed
+        #get the factory data bytes
+        hex_factory_packet = hex_data_packet[1204:]
 
+        #get hex_data_block
+        hex_data_blocks = hex_data_packet[:1200]
+        Datablock = {}
+        
+        for i in xrange(1,N_DATA_BLOCKS+1):
+            Datablock[i] = {}
+            
+            #get the azimuth bytes from each data block
+            azimuth_bytes = hex_data_blocks[100*(i-1):100*i][2:4]
+            
+            # split the entire data block into chunks representing channels
+            channel_bytes = list(chunks(hex_data_blocks[100*(i-1):100*i][4:],3)) 
+
+            Datablock[i]['azimuthbytes'] = azimuth_bytes
+            Datablock[i]['channelbytes'] = channel_bytes
+          
+        data_packet_sensor_info = create_packet_table(Datablock)        
+        return data_packet_sensor_info
+
+
+    def create_frame(self, MAX_LIM = 50000):        
+        F = self.dataq.get_nowait()
+        self.dataq.task_done()  
+        self.frame = concatenate((self.frame, F), axis=0)
+        self.frame = get_uniques(self.frame)
+
+        # need to interpolate between the data along a constant z
+        if shape(self.frame)[0] > MAX_LIM:            
+            self.fstore.append(self.frame)
+            self.init_frame()
+        
+                                
+        
 
 def create_packet_table(datablock):
-    data_packet_sensor_info = []
+    #data_packet_sensor_info = []
+    #data_packet_sensor_info = empty(shape=(0,4), dtype=float) (x,y,z,reflec)
+    data_packet_sensor_info = empty(shape=(0,7), dtype=float) #(x,y,z,r,g,b,a)
     
     azimuth_angles = [0]*12
     count = 0
@@ -90,11 +94,10 @@ def create_packet_table(datablock):
         azimuth_angles[count] = azimuth_angle
         count += 1
 
-    #print azimuth_angles
+    
     # interpolate the azimuth angle values
     azimuth_angles_inter = list_mean_circinterp(azimuth_angles)
     #azimuth_angles_inter = interp(azimuth_angles)
-    #print azimuth_angles_inter
     
     for BLOCK in xrange(1,N_DATA_BLOCKS+1):
         for CHANNEL_NO in xrange(len(datablock[BLOCK]['channelbytes'])):
@@ -111,8 +114,16 @@ def create_packet_table(datablock):
             distance = read_range_bytes(range_bytes)
             reflec = read_reflectivity_bytes(reflec_bytes)
             elevation = get_elevation_angle(laser_id)
-            data_packet_sensor_info.append(((distance,azimuth,elevation),reflec))
 
+            # convert data to cartesian coordinates
+            xyz = convert2cart(distance, azimuth, elevation)
+            #data_packet_sensor_info.append(((distance,azimuth,elevation),reflec))
+            #data_packet_sensor_info.append((xyz[0],xyz[1],xyz[2],reflec))
+
+            #convert to reflectivity to rgba
+            reflec_rgba = rgba_creator(reflec)
+            
+            data_packet_sensor_info = append(data_packet_sensor_info, array([[ xyz[0],xyz[1],xyz[2],reflec_rgba[0],reflec_rgba[1],reflec_rgba[2],reflec_rgba[3] ]]), axis=0)
     return data_packet_sensor_info
 
 
@@ -143,35 +154,16 @@ def get_elevation_angle(laser_id):
         
     return elevat_dict[laser_id]
 
-def create_frame(q_data, MAX_LIM = 1000):
-    Data =[[],[],[],[]] #(x,y,z,intensity)
-    #global Data
-    if not q_data.empty():
-        if q_data.qsize() > MAX_LIM:            
-            t = time.time()
-            data_packets = queue_get_all(q_data, MAX_LIM)
-            q_data.task_done()
 
-            elapsed = time.time() -t
-            print 'frame create ',elapsed
-            
-            for each_packet in data_packets:
-                for data in each_packet:
-                    my_ret = convert2cart(data[0][0], data[0][1], data[0][2])                    
-                    Data[0].append(my_ret[0])
-                    Data[1].append(my_ret[1])
-                    Data[2].append(my_ret[2])
-                    Data[3].append(data[1])
-                  
-            Data_me = array(Data)
-            Data_me = Data_me.T
-            Data_me = get_uniques(Data_me)
-            return Data_me
-        else:
-            Data_me = array(Data)
-            return Data_me
-    else:
-        Data_me = array(Data)
-        return Data_me
-        
+def rgba_creator(reflectivity):
+    if reflectivity >= 0 and reflectivity < 50:
+        return (0,(1.0/50.0)*reflectivity,1,1)
+    elif reflectivity >= 50 and reflectivity < 101:
+        return (0,1,-(1.0/50.0)*reflectivity+2,1)
+    elif reflectivity >= 101 and reflectivity < 180:
+        return (0,(1.0/80.0)*reflectivity-(5.0/4.0),0,1)
+    elif reflectivity >= 180 and reflectivity < 256:
+        return (0,(255.0-reflectivity)/75.0,0,1)
+
+
     

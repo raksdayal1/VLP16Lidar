@@ -17,33 +17,29 @@ from LidarProcesses import *
 N_DATA_BLOCKS = 12
 
 def main():
-    global lidarscatter, q_data
+    global lidarscatter, lid
     IP = '192.168.1.71' # IP of recving computer
     PORT_DATA = 2368
     PORT_POS = 8308
 
     FILE_NAME = 'LIDAR_DATA.txt'
 
-    q_data = Queue(maxsize=0)
-    #q_pos = Queue(maxsize=500)
-    #q_frames = Queue(maxsize=2000)
-    #q_plot = Queue(maxsize=20000)
-    
-    t_data = Thread(target = pull_data, args=(IP,PORT_DATA, q_data,))
-    #t_pos = Thread(target = pull_position, args=(IP, PORT_POS, q_pos,))
+    #q_data = Queue(maxsize=0)
+    #t_data = Thread(target = pull_data, args=(IP,PORT_DATA, q_data,))
     #t_parse = Thread(target = data_packet_parse, args=(q_data, q_frames,))
     #t_write = Thread(target = write_to_file, args=(FILE_NAME, q_frames,))
 
-    t_data.daemon = True
-    #t_pos.daemon = True
+    #t_data.daemon = True
     #t_parse.daemon = True
     #t_write.daemon = True
     
-    t_data.start()
-    #t_pos.start()
+    #t_data.start()
     #t_parse.start()
     #t_write.start()
 
+
+    lid = LIDAR(IP,PORT_DATA)
+    
     app=QtGui.QApplication([])
     w = gl.GLViewWidget()
     w.opts['distance'] = 20
@@ -71,21 +67,16 @@ def main():
 
 
 def update():
-    global lidarscatter, q_data
-    #print q_data.qsize()
-    t = time.time()
-    A = create_frame(q_data,100)
-    if not size(A) == 0:
-        
-        pos1 = zeros(shape=(shape(A)[0],3))
-        pos1[:,0] = A[:,0]
-        pos1[:,1] = A[:,1]
-        pos1[:,2] = A[:,2]
-        lidarscatter.setData(pos=pos1, color=(0.2,0.4,0.6,0.8), size=2, pxMode=True)
-        elapsed = time.time() -t
-        print elapsed
-        
-        
+    global lidarscatter, lid
+    lid.pull_data()
+    lid.create_frame()
+
+    if len(lid.fstore) > 0:
+        DATA = lid.fstore.pop(0)
+        pos1 = DATA[:,0:3]
+        color1 = DATA[:,3:]
+        lidarscatter.setData(pos=pos1, color=color1, size=2, pxMode=True)
+    
 
 if __name__ == '__main__':
     main()
