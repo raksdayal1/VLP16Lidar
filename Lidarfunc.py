@@ -9,11 +9,13 @@ def chunks(l, n):
         yield l[i:i + n]
 
 def append_hexbytes(a,b):
-	head_byte = a[0:2]
-	a = a[2:]
-	b = b[2:]
-	c = head_byte + a + b
-	return c
+    #print a,b
+    head_byte = a[0:2]
+    a = a[2:].zfill(2)#.ljust(2,'0')
+    b = b[2:].zfill(2)#.ljust(2,'0')
+    c = head_byte + a + b
+    #print c
+    return c
 
 def read_azimuth_bytes(data_bytes):
     if len(data_bytes) == 2:
@@ -49,9 +51,10 @@ def read_reflectivity_bytes(data_bytes):
 def read_timestamp_bytes(data_bytes):
     if len(data_bytes) == 4:
         data_bytes.reverse()
-        data_hex = data_bytes[0][0:2]+data_bytes[0][2:]+data_bytes[1][2:]+data_bytes[2][2:]+data_bytes[3][2:] # convert to hex
+        #data_hex = data_bytes[0][2:].ljust(2,'0')+data_bytes[1][2:].ljust(2,'0')+data_bytes[2][2:].ljust(2,'0')+data_bytes[3][2:].ljust(2,'0') # convert to hex
+        data_hex = data_bytes[0][2:].zfill(2)+data_bytes[1][2:].zfill(2)+data_bytes[2][2:].zfill(2)+data_bytes[3][2:].zfill(2) # convert to hex
         data_dec = int(data_hex, 16) #convert to decimal, time obtained in microsec
-        time_sec = data_dec/1e6
+        time_sec = data_dec/float(1e6)
         time_min = time_sec/60.0;
     else:
         print("Time stamp bytes should be of length 4")
