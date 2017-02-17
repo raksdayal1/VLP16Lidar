@@ -24,6 +24,7 @@ class LIDAR:
 
     def init_frame(self):
         self.frame = empty(shape=(0,7), dtype=float)
+        #self.frame = empty(shape=(0,3), dtype=float)
         
         
     def pull_data(self):
@@ -40,8 +41,7 @@ class LIDAR:
     def data_packet_parse(self,hex_data_packet):
         
         hex_time_packet = hex_data_packet[1200:1204]
-        
-        time_sec = read_timestamp_bytes(hex_time_packet)
+        time_sec,time_min = read_timestamp_bytes(hex_time_packet)
         
         #get the factory data bytes
         hex_factory_packet = hex_data_packet[1204:]
@@ -71,7 +71,7 @@ class LIDAR:
         self.dataq.task_done()  
         self.frame = concatenate((self.frame, F), axis=0)
         self.frame = get_uniques(self.frame)
-        print shape(self.frame)[0]
+        #print shape(self.frame)[0]
         # need to interpolate between the data along a constant z
         if shape(self.frame)[0] > MAX_LIM:            
             self.fstore.append(self.frame)
@@ -82,7 +82,6 @@ class LIDAR:
 
 def create_packet_table(datablock):
     #data_packet_sensor_info = []
-    #data_packet_sensor_info = empty(shape=(0,4), dtype=float) (x,y,z,reflec)
     data_packet_sensor_info = empty(shape=(0,7), dtype=float) #(x,y,z,r,g,b,a)
     
     azimuth_angles = [0]*12
@@ -123,6 +122,7 @@ def create_packet_table(datablock):
             #convert to reflectivity to rgba
             reflec_rgba = rgba_creator(reflec)
             
+            #data_packet_sensor_info_raw=append(data_packet_sensor_info_raw, array([[ distance,azimuth,elevation ]]), axis=0)
             data_packet_sensor_info = append(data_packet_sensor_info, array([[ xyz[0],xyz[1],xyz[2],reflec_rgba[0],reflec_rgba[1],reflec_rgba[2],reflec_rgba[3] ]]), axis=0)
     return data_packet_sensor_info
 
@@ -157,7 +157,7 @@ def get_elevation_angle(laser_id):
 
 def rgba_creator(reflectivity):
     if reflectivity >= 0 and reflectivity < 50:
-        return (0,(1.0/50.0)*reflectivity,1,1)
+        return (0,(1.0/50.0)*reflectivity+0.05,1,1)
     elif reflectivity >= 50 and reflectivity < 101:
         return (0,1,-(1.0/50.0)*reflectivity+2,1)
     elif reflectivity >= 101 and reflectivity < 180:
