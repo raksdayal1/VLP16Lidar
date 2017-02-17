@@ -22,8 +22,6 @@ def main():
     PORT_DATA = 2368
     PORT_POS = 8308
 
-    FILE_NAME = 'LIDAR_DATA.txt'
-
     #q_data = Queue(maxsize=0)
     #t_data = Thread(target = pull_data, args=(IP,PORT_DATA, q_data,))
     #t_parse = Thread(target = data_packet_parse, args=(q_data, q_frames,))
@@ -43,6 +41,10 @@ def main():
     app=QtGui.QApplication([])
     w = gl.GLViewWidget()
     w.opts['distance'] = 20
+    layout = QtGui.QGridLayout()
+    w.setLayout(layout)
+    
+    
     w.show()
     w.setWindowTitle('GE-OSU Matrice 600 VLP16 Custom Lidar Scan')
 
@@ -68,14 +70,19 @@ def main():
 
 def update():
     global lidarscatter, lid
+    #FILE_NAME = 'LIDAR_DATA.txt'
+    #f_handle = file(FILE_NAME, 'a')
+    
     lid.pull_data()
-    lid.create_frame()
+    lid.create_frame(10000)
 
     if len(lid.fstore) > 0:
         DATA = lid.fstore.pop(0)
+        #savetxt(f_handle, DATA)
         pos1 = DATA[:,0:3]
         color1 = DATA[:,3:]
-        lidarscatter.setData(pos=pos1, color=color1, size=2, pxMode=True)
+        lidarscatter.setData(pos=pos1, color=color1, size=2.5, pxMode=True)
+        #f_handle.close()
     
 
 if __name__ == '__main__':

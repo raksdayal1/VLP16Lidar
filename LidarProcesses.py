@@ -71,7 +71,7 @@ class LIDAR:
         self.dataq.task_done()  
         self.frame = concatenate((self.frame, F), axis=0)
         self.frame = get_uniques(self.frame)
-
+        print shape(self.frame)[0]
         # need to interpolate between the data along a constant z
         if shape(self.frame)[0] > MAX_LIM:            
             self.fstore.append(self.frame)
